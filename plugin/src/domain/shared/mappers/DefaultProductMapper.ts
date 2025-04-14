@@ -333,26 +333,7 @@ export class DefaultProductMapper implements ProductMapper {
             if (!variantAvailabilityChannels) {
                 return null;
             }
-            return availableQuantity;
-        }
-
-        const variantChannelAvailableQuantity = variantAvailabilityChannels
-            ? variantAvailabilityChannels[productInventoryChannel]?.availableQuantity
-            : undefined;
-        
-        if (variantChannelAvailableQuantity) {
-            return variantChannelAvailableQuantity;
-        }
-
-        const inventoryChannelAvailableQuantity =
-            inventoryEntryChannel?.id === productInventoryChannel ? availability.availableQuantity : undefined;
-
-        if (inventoryChannelAvailableQuantity) {
-            return inventoryChannelAvailableQuantity;
-        }
-        
-        if (!variantAvailabilityChannels) {
-            return null;
+            return availability.availableQuantity;
         }
         // Prevents bulk sync and inventory update events from stepping on each other
         else if (!productInventoryChannel && inventoryEntryChannel) {

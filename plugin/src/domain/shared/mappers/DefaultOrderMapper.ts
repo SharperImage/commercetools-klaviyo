@@ -121,7 +121,6 @@ export class DefaultOrderMapper implements OrderMapper {
                             orderProducts.map((product) => product.masterData.current.categories).flat(),
                         ),
                     },
-                    unique_id: lineItem.id,
                     uniqueId: lineItem.id,
                     time: time ? new Date(time) : new Date(order.createdAt),
                 },

@@ -177,37 +177,6 @@ export class KlaviyoSdkService extends KlaviyoService {
             );
             throw error;
         }
-
-        logger.info(
-            `Invalid phone number when ${
-                create ? 'creating' : 'updating'
-            } profile. Retrying after removing phone number from profile...`,
-            JSON.parse(e?.response?.error?.text),
-        );
-
-        const modifiedBody: any = {
-            data: {
-                ...body.data,
-                attributes: {
-                    ...(body.data as any).attributes,
-                    phone_number: undefined,
-                },
-            },
-        };
-        
-        try {
-            return await (create
-                ? Profiles.createProfile(modifiedBody)
-                : Profiles.updateProfile(modifiedBody, modifiedBody.data?.id));
-        } catch (e: any) {
-            logger.error(
-                `Error ${
-                    create ? 'creating' : 'updating'
-                } profile in Klaviyo after removing phone_number. Response code ${e.status}, ${e.message}`,
-                e,
-            );
-            throw e;
-        }
     }
 
     private async createOrUpdateProfile(body: KlaviyoRequestType, create: boolean) {

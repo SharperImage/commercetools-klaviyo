@@ -10,6 +10,9 @@ import { CtProductService } from '../../infrastructure/driven/commercetools/CtPr
 import { getElapsedSeconds, startTime } from '../../utils/time-utils';
 import { groupIntoMaxSizeJobs } from '../../utils/job-grouper';
 import { getLocalizedStringAsText } from '../../utils/locale-currency-utils';
+import { GetCatalogItemResponseCollectionCompoundDocument } from 'klaviyo-api';
+import { CategoryDeletedRequest } from '../../types/klaviyo-types';
+import { KlaviyoEvent } from '../../types/klaviyo-plugin';
 
 export class ProductsSync {
     lockKey = 'productFullSync';
@@ -84,8 +87,8 @@ export class ProductsSync {
             ).flat();
 
             productPromiseResults.forEach((p: any) => {
-                importedElements += parseInt(p.value?.body?.data.attributes.completed_count || 0);
-                failedElements += parseInt(p.value?.body?.data.attributes.failed_count || 0);
+                importedElements += parseInt(p.value?.body?.data.attributes.completedCount || 0);
+                failedElements += parseInt(p.value?.body?.data.attributes.failedCount || 0);
             });
 
             await this.klaviyoService.checkRateLimitsAndDelay(productPromiseResults.filter(isRateLimited));
@@ -111,8 +114,8 @@ export class ProductsSync {
             ).flat();
 
             variantPromiseResults.forEach((p: any) => {
-                importedElements += parseInt(p.value?.body?.data.attributes.completed_count || 0);
-                failedElements += parseInt(p.value?.body?.data.attributes.failed_count || 0);
+                importedElements += parseInt(p.value?.body?.data.attributes.completedCount || 0);
+                failedElements += parseInt(p.value?.body?.data.attributes.failedCount || 0);
             });
 
             await this.klaviyoService.checkRateLimitsAndDelay(variantPromiseResults.filter(isRateLimited));
@@ -152,13 +155,13 @@ export class ProductsSync {
             //ensures that only one sync at the time is running
             this.lockService.acquireLock(this.lockKey);
 
-            let klaviyoItemResults: KlaviyoQueryResult<KlaviyoCatalogItem> | undefined;
+            let klaviyoItemResults: GetCatalogItemResponseCollectionCompoundDocument | undefined;
             let succeeded = 0,
                 errored = 0,
                 totalItems = 0;
 
             do {
-                klaviyoItemResults = await this.klaviyoService.getKlaviyoPaginatedItems(klaviyoItemResults?.links.next);
+                klaviyoItemResults = await this.klaviyoService.getKlaviyoPaginatedItems(klaviyoItemResults?.links?.next);
 
                 const promiseResults = await Promise.allSettled(
                     klaviyoItemResults.data.flatMap((item) => this.generateDeleteItemRequest(item.id as string)),
@@ -179,7 +182,7 @@ export class ProductsSync {
                         logger.error('Error deleting products in klaviyo', rejected),
                     );
                 }
-            } while (klaviyoItemResults?.links.next);
+            } while (klaviyoItemResults?.links?.next);
             logger.info(
                 `Klaviyo products/variants deletion. Total products to be deleted ${totalItems}, successfully deleted: ${succeeded}, errored: ${errored}`,
             );

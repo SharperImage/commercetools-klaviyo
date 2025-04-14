@@ -3,6 +3,7 @@ import { CurrencyService } from '../../services/CurrencyService';
 import { DefaultOrderMapper } from '../DefaultOrderMapper';
 import { SharperImageDefaultCustomerMapper } from './SharperImageDefaultCustomerMapper';
 import { getCustomerProfileFromOrderSharperImage } from '../../../../utils/sharperimage/get-customer-profile-from-order';
+import { EventRequest } from '../../../../types/klaviyo-types';
 
 export class SharperImageDefaultOrderMapper extends DefaultOrderMapper {
   private sharperImageCustomerMapper: SharperImageDefaultCustomerMapper;

@@ -30,6 +30,7 @@ import { InventoryResourceUpdatedEventProcessor } from './eventProcessors/invent
 import { ProductPublishedEventProcessor } from './eventProcessors/product/productPublishedEventProcessor';
 import { SharperImageDefaultCustomerMapper } from '../shared/mappers/sharperimage/SharperImageDefaultCustomerMapper';
 import { SharperImageDefaultOrderMapper } from '../shared/mappers/sharperimage/SharperImageDefaultOrderMapper';
+import { ProcessingResult } from '../../types/klaviyo-plugin';
 
 const context: Context = {
     klaviyoService: new KlaviyoSdkService(),

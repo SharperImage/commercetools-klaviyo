@@ -17,6 +17,16 @@ import {
     getAdditionalPricesAsJson,
     getAdditionalCurrenciesAsJson,
 } from '../../../utils/locale-currency-utils';
+import {
+    ItemDeletedRequest,
+    ItemJobRequest,
+    ItemRequest,
+    ItemVariantJobRequest,
+    ItemVariantRequest,
+    ItemVariantType,
+    KlaviyoRelationshipData,
+} from '../../../types/klaviyo-types';
+import { GetCatalogVariantResponseCollectionDataInner } from 'klaviyo-api';
 
 export class DefaultProductMapper implements ProductMapper {
     constructor(private readonly currencyService: CurrencyService) {}
@@ -57,15 +67,15 @@ export class DefaultProductMapper implements ProductMapper {
                 id: update ? `$custom:::$default:::${defaultProductSlug}` : undefined,
                 attributes: {
                     published: true,
-                    integration_type: !update ? '$custom' : undefined,
-                    catalog_type: !update ? '$default' : undefined,
-                    external_id: !update ? defaultProductSlug : undefined,
+                    integrationType: !update ? '$custom' : undefined,
+                    catalogType: !update ? '$default' : undefined,
+                    externalId: !update ? defaultProductSlug : undefined,
                     title: getLocalizedStringAsText(productName),
                     description: productDescription ? getLocalizedStringAsText(productDescription) : '',
                     url: productUrl,
-                    image_full_url: productMasterVariantImages ? productMasterVariantImages[0]?.url : undefined,
+                    imageFullUrl: productMasterVariantImages ? productMasterVariantImages[0]?.url : undefined,
                     price: productPrice ? this.currencyService.convert(productPrice.amount, productPrice.currency) : 0,
-                    custom_metadata: {
+                    customMetadata: {
                         title_json: JSON.stringify(
                             getAdditionalLocalizedStringsAsJson([
                                 {
@@ -112,7 +122,7 @@ export class DefaultProductMapper implements ProductMapper {
                       }
                     : undefined,
             },
-        };
+        } as any;
     }
 
     public mapCtProductVariantToKlaviyoVariant(
@@ -139,18 +149,18 @@ export class DefaultProductMapper implements ProductMapper {
                 id: update ? `$custom:::$default:::${productVariant.sku}` : undefined,
                 attributes: {
                     published: true,
-                    integration_type: !update ? '$custom' : undefined,
-                    catalog_type: !update ? '$default' : undefined,
-                    external_id: !update ? productVariant.sku : undefined,
+                    integrationType: !update ? '$custom' : undefined,
+                    catalogType: !update ? '$default' : undefined,
+                    externalId: !update ? productVariant.sku : undefined,
                     title: getLocalizedStringAsText(productName),
                     description: productDescription ? getLocalizedStringAsText(productDescription) : '',
                     sku: !update ? productVariant.sku : undefined,
                     url: productUrl,
-                    image_full_url: variantImages?.[0]?.url,
-                    inventory_quantity: variantInventoryQuantity ?? 0,
-                    inventory_policy: 1,
+                    imageFullUrl: variantImages?.[0]?.url,
+                    inventoryQuantity: variantInventoryQuantity ?? 0,
+                    inventoryPolicy: 1,
                     price: variantPrice ? this.currencyService.convert(variantPrice.amount, variantPrice.currency) : 0,
-                    custom_metadata: {
+                    customMetadata: {
                         title_json: JSON.stringify(
                             getAdditionalLocalizedStringsAsJson([
                                 {
@@ -191,8 +201,8 @@ export class DefaultProductMapper implements ProductMapper {
                 },
                 relationships: !update
                     ? {
-                          items: {
-                              data: [this.mapCtProductToKlaviyoVariantItem(product)],
+                          item: {
+                              data: this.mapCtProductToKlaviyoVariantItem(product),
                           },
                       }
                     : undefined,
@@ -215,12 +225,14 @@ export class DefaultProductMapper implements ProductMapper {
             data: {
                 type: jobType,
                 attributes: {
-                    items: products
-                        .filter((p) => p.masterData.current)
-                        .map((p) => this.mapCtProductToKlaviyoItem(p, type === 'itemUpdated').data),
+                    items: {
+                        data: products
+                            .filter((p) => p.masterData.current)
+                            .map((p) => this.mapCtProductToKlaviyoItem(p, type === 'itemUpdated').data),
+                    },
                 },
             },
-        };
+        } as any;
     }
 
     private static TYPE_TO_JOB_TYPE: Record<string, 'catalog-variant-bulk-create-job' | 'catalog-variant-bulk-update-job' | 'catalog-variant-bulk-delete-job'> =  {
@@ -239,23 +251,25 @@ export class DefaultProductMapper implements ProductMapper {
             data: {
                 type: jobType,
                 attributes: {
-                    variants:
-                        type === 'variantDeleted'
-                            ? productVariants.map(
-                                  (v) =>
-                                      ({
-                                          type: 'catalog-variant',
-                                          id: v as string,
-                                      } as ItemVariantType),
-                              )
-                            : productVariants.map(
-                                  (v) =>
-                                      this.mapCtProductVariantToKlaviyoVariant(
-                                          product,
-                                          v as ProductVariant,
-                                          type === 'variantUpdated',
-                                      ).data,
-                              ),
+                    variants: {
+                        data:
+                            type === 'variantDeleted'
+                                ? productVariants.map(
+                                      (v) =>
+                                          ({
+                                              type: 'catalog-variant',
+                                              id: v as string,
+                                          } as ItemVariantType),
+                                  )
+                                : productVariants.map(
+                                      (v) =>
+                                          this.mapCtProductVariantToKlaviyoVariant(
+                                              product,
+                                              v as ProductVariant,
+                                              type === 'variantUpdated',
+                                          ).data,
+                                  ),
+                    },
                 },
             },
         };
@@ -277,44 +291,62 @@ export class DefaultProductMapper implements ProductMapper {
         };
     }
 
-    public getProductInventoryByPriority(availability?: ProductVariantAvailability | InventoryEntry): number | null {
-        const availableQuantity = availability?.availableQuantity || 0;
-
-        if (!availability || !config.has('product.inventory.useChannelInventory')) {
-            return availableQuantity;
+    public getProductInventoryByPriority(availability?: ProductVariantAvailability | InventoryEntry): number | null | undefined {
+        if (!availability) {
+            return 0;
         }
 
-        const productInventoryChannel = config.get('product.inventory.useChannelInventory') as string;
-        const variantAvailabilityChannels = (availability as ProductVariantAvailability).channels;
-        const inventoryEntryChannel = (availability as InventoryEntry).supplyChannel;
+        if (config.has('product.inventory.useChannelInventory')) {
+            const productInventoryChannel = config.get('product.inventory.useChannelInventory') as string;
+            const variantAvailabilityChannels = (availability as ProductVariantAvailability).channels;
+            const inventoryEntryChannel = (availability as InventoryEntry).supplyChannel;
+            const returnValue = this.getInventoryQuantityByPriority(
+                availability,
+                productInventoryChannel,
+                variantAvailabilityChannels,
+                inventoryEntryChannel,
+            );
+            return isNaN(returnValue as number) ? availability?.availableQuantity || 0 : returnValue;
+        }
 
-        if (!productInventoryChannel || !(variantAvailabilityChannels || inventoryEntryChannel)) {
-            if (!productInventoryChannel && inventoryEntryChannel) {
+        return availability?.availableQuantity || 0;
+    }
+
+    private getInventoryQuantityByPriority(
+        availability: ProductVariantAvailability | InventoryEntry,
+        productInventoryChannel: string,
+        variantAvailabilityChannels: ProductVariantAvailability['channels'],
+        inventoryEntryChannel: InventoryEntry['supplyChannel'],
+    ) {
+        if (productInventoryChannel && (variantAvailabilityChannels || inventoryEntryChannel)) {
+            const variantChannelAvailableQuantity = this.getVariantChannelAvailableQuantity(productInventoryChannel, variantAvailabilityChannels)
+            const inventoryChannelAvailableQuantity =
+                inventoryEntryChannel?.id === productInventoryChannel ? availability.availableQuantity : undefined;
+            if (variantChannelAvailableQuantity) {
+                return variantChannelAvailableQuantity;
+            }
+
+            if (inventoryChannelAvailableQuantity) {
+                return inventoryChannelAvailableQuantity;
+            }
+            
+            if (!variantAvailabilityChannels) {
                 return null;
             }
-            return availableQuantity;
+            return availability.availableQuantity;
         }
-
-        const variantChannelAvailableQuantity = variantAvailabilityChannels
-            ? variantAvailabilityChannels[productInventoryChannel]?.availableQuantity
-            : undefined;
-        
-        if (variantChannelAvailableQuantity) {
-            return variantChannelAvailableQuantity;
-        }
-
-        const inventoryChannelAvailableQuantity =
-            inventoryEntryChannel?.id === productInventoryChannel ? availability.availableQuantity : undefined;
-
-        if (inventoryChannelAvailableQuantity) {
-            return inventoryChannelAvailableQuantity;
-        }
-        
-        if (!variantAvailabilityChannels) {
+        // Prevents bulk sync and inventory update events from stepping on each other
+        else if (!productInventoryChannel && inventoryEntryChannel) {
             return null;
         }
 
-        return availableQuantity;
+        return NaN;
+    }
+
+    private getVariantChannelAvailableQuantity(productInventoryChannel: string, variantAvailabilityChannels: ProductVariantAvailability['channels']): number | undefined {
+        return variantAvailabilityChannels
+                ? variantAvailabilityChannels[productInventoryChannel]?.availableQuantity
+                : undefined;
     }
 
     public mapKlaviyoItemIdToDeleteItemRequest(klaviyoItemId: string): ItemDeletedRequest {
@@ -325,9 +357,17 @@ export class DefaultProductMapper implements ProductMapper {
         };
     }
 
+    public mapKlaviyoVariantIdToDeleteVariantRequest(klaviyoVariantId: string): ItemDeletedRequest {
+        return {
+            data: {
+                id: klaviyoVariantId,
+            },
+        };
+    }
+
     public mapCtInventoryEntryToKlaviyoVariant(
         inventory: InventoryEntry,
-        klaviyoVariant: ItemVariantType,
+        klaviyoVariant: GetCatalogVariantResponseCollectionDataInner,
     ): ItemVariantRequest {
         const inventoryEntryQuantity = this.getProductInventoryByPriority(inventory);
         return {
@@ -335,8 +375,8 @@ export class DefaultProductMapper implements ProductMapper {
                 type: 'catalog-variant',
                 id: klaviyoVariant.id,
                 attributes: {
-                    inventory_policy: 1,
-                    inventory_quantity: inventoryEntryQuantity !== null ? inventoryEntryQuantity : undefined,
+                    inventoryPolicy: 1,
+                    inventoryQuantity: inventoryEntryQuantity !== null ? inventoryEntryQuantity : undefined,
                     published: true,
                 },
             },

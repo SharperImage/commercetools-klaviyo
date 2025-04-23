@@ -2,6 +2,8 @@ import { AbstractEventProcessor } from '../abstractEventProcessor';
 import logger from '../../../../utils/log';
 import { Product, ProductPublishedMessage } from '@commercetools/platform-sdk';
 import config from 'config';
+import { getLocalizedStringAsText } from '../../../../utils/locale-currency-utils';
+import { KlaviyoEvent } from '../../../../types/klaviyo-plugin';
 
 export class ProductPublishedEventProcessor extends AbstractEventProcessor {
     private readonly PROCESSOR_NAME = 'ProductPublished';
@@ -19,9 +21,9 @@ export class ProductPublishedEventProcessor extends AbstractEventProcessor {
         const message = this.ctMessage as unknown as ProductPublishedMessage;
         logger.info(`processing product published message`);
         const ctProduct = (await this.context.ctProductService.getProductById(message.resource.id)) as Product;
-        const klaviyoItem = await this.context.klaviyoService.getKlaviyoItemByExternalId(message.resource.id);
+        const klaviyoItem = await this.context.klaviyoService.getKlaviyoItemByExternalId(getLocalizedStringAsText(message.productProjection.slug));
 
-        const variantJobRequests = await this.generateProductVariantsJobRequestForKlaviyo(ctProduct);
+        const variantRequests = await this.generateProductVariantsRequestsForKlaviyo(ctProduct);
 
         let klaviyoEvent: KlaviyoEvent;
         if (!klaviyoItem || !klaviyoItem.id) {
@@ -35,8 +37,8 @@ export class ProductPublishedEventProcessor extends AbstractEventProcessor {
                 type: 'itemUpdated',
             };
         }
-        (klaviyoEvent.body as ItemRequest).variantJobRequests = variantJobRequests;
-        return [klaviyoEvent];
+
+        return [klaviyoEvent, ...variantRequests];
     }
 
     private isValidMessageType(type: string): boolean {
@@ -46,14 +48,16 @@ export class ProductPublishedEventProcessor extends AbstractEventProcessor {
         );
     }
 
-    private generateProductVariantsJobRequestForKlaviyo = async (product: Product): Promise<KlaviyoEvent[]> => {
+    private generateProductVariantsRequestsForKlaviyo = async (product: Product): Promise<KlaviyoEvent[]> => {
         const combinedVariants = [product.masterData.current.masterVariant].concat(product.masterData.current.variants);
-        const ctProductVariants = combinedVariants
+        const ctProductVariantKlaviyoIds = combinedVariants
             .map((v) => v.sku || '')
             .filter((v) => v)
             .map((v) => `$custom:::$default:::${v}`);
+        const productSlug = product.masterData.current.slug;
+        const defaultProductSlug = getLocalizedStringAsText(productSlug);
         const klaviyoVariants = (
-            await this.context.klaviyoService.getKlaviyoItemVariantsByCtSkus(product.id, undefined, ['id'])
+            await this.context.klaviyoService.getKlaviyoItemVariantsByCtSkus(defaultProductSlug, undefined, ['id'])
         ).map((i) => i.id);
         const variantsForCreation = combinedVariants.filter(
             (v) => !klaviyoVariants.includes(`$custom:::$default:::${v.sku}`),
@@ -61,36 +65,30 @@ export class ProductPublishedEventProcessor extends AbstractEventProcessor {
         const variantsForUpdate = combinedVariants.filter((v) =>
             klaviyoVariants.includes(`$custom:::$default:::${v.sku}`),
         );
-        const variantsForDeletion = klaviyoVariants.filter((v) => v && !ctProductVariants.includes(v));
+        const variantsForDeletion = klaviyoVariants.filter((v) => v && !ctProductVariantKlaviyoIds.includes(v));
         const promises: KlaviyoEvent[] = [];
         if (variantsForDeletion.length) {
-            promises.push({
-                type: 'variantDeleted',
-                body: this.context.productMapper.mapCtProductVariantsToKlaviyoVariantsJob(
-                    product,
-                    variantsForDeletion as string[],
-                    'variantDeleted',
-                ),
+            variantsForDeletion.forEach((variantId) => {
+                promises.push({
+                    type: 'variantDeleted',
+                    body: this.context.productMapper.mapKlaviyoVariantIdToDeleteVariantRequest(variantId),
+                });
             });
         }
         if (variantsForCreation.length) {
-            promises.push({
-                type: 'variantCreated',
-                body: this.context.productMapper.mapCtProductVariantsToKlaviyoVariantsJob(
-                    product,
-                    variantsForCreation,
-                    'variantCreated',
-                ),
+            variantsForCreation.forEach((variant) => {
+                promises.push({
+                    type: 'variantCreated',
+                    body: this.context.productMapper.mapCtProductVariantToKlaviyoVariant(product, variant, false),
+                });
             });
         }
         if (variantsForUpdate.length) {
-            promises.push({
-                type: 'variantUpdated',
-                body: this.context.productMapper.mapCtProductVariantsToKlaviyoVariantsJob(
-                    product,
-                    variantsForUpdate,
-                    'variantUpdated',
-                ),
+            variantsForUpdate.forEach((variant) => {
+                promises.push({
+                    type: 'variantUpdated',
+                    body: this.context.productMapper.mapCtProductVariantToKlaviyoVariant(product, variant, true),
+                });
             });
         }
         return promises;

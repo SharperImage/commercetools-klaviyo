@@ -9,6 +9,10 @@ import { Product } from '@commercetools/platform-sdk';
 import { CtProductService } from '../../infrastructure/driven/commercetools/CtProductService';
 import { getElapsedSeconds, startTime } from '../../utils/time-utils';
 import { groupIntoMaxSizeJobs } from '../../utils/job-grouper';
+import { getLocalizedStringAsText } from '../../utils/locale-currency-utils';
+import { GetCatalogItemResponseCollectionCompoundDocument } from 'klaviyo-api';
+import { CategoryDeletedRequest } from '../../types/klaviyo-types';
+import { KlaviyoEvent } from '../../types/klaviyo-plugin';
 
 export class ProductsSync {
     lockKey = 'productFullSync';
@@ -23,7 +27,7 @@ export class ProductsSync {
         logger.info('Started sync of all historical products');
         try {
             //ensures that only one sync at the time is running
-            await this.lockService.acquireLock(this.lockKey);
+            this.lockService.acquireLock(this.lockKey);
 
             let ctProductsResult: PaginatedProductResults | undefined;
             let succeeded = 0,
@@ -83,8 +87,8 @@ export class ProductsSync {
             ).flat();
 
             productPromiseResults.forEach((p: any) => {
-                importedElements += parseInt(p.value?.body?.data.attributes.completed_count || 0);
-                failedElements += parseInt(p.value?.body?.data.attributes.failed_count || 0);
+                importedElements += parseInt(p.value?.body?.data.attributes.completedCount || 0);
+                failedElements += parseInt(p.value?.body?.data.attributes.failedCount || 0);
             });
 
             await this.klaviyoService.checkRateLimitsAndDelay(productPromiseResults.filter(isRateLimited));
@@ -110,8 +114,8 @@ export class ProductsSync {
             ).flat();
 
             variantPromiseResults.forEach((p: any) => {
-                importedElements += parseInt(p.value?.body?.data.attributes.completed_count || 0);
-                failedElements += parseInt(p.value?.body?.data.attributes.failed_count || 0);
+                importedElements += parseInt(p.value?.body?.data.attributes.completedCount || 0);
+                failedElements += parseInt(p.value?.body?.data.attributes.failedCount || 0);
             });
 
             await this.klaviyoService.checkRateLimitsAndDelay(variantPromiseResults.filter(isRateLimited));
@@ -134,11 +138,11 @@ export class ProductsSync {
                     _startTime,
                 )} seconds`,
             );
-            await this.lockService.releaseLock(this.lockKey);
+            this.lockService.releaseLock(this.lockKey);
         } catch (e: any) {
             if (e?.code !== ErrorCodes.LOCKED) {
                 logger.error('Error while syncing all historical products', e);
-                await this.lockService.releaseLock(this.lockKey);
+                this.lockService.releaseLock(this.lockKey);
             } else {
                 logger.warn('Already locked');
             }
@@ -149,15 +153,15 @@ export class ProductsSync {
         logger.info('Started deletion of all products and variants in Klaviyo');
         try {
             //ensures that only one sync at the time is running
-            await this.lockService.acquireLock(this.lockKey);
+            this.lockService.acquireLock(this.lockKey);
 
-            let klaviyoItemResults: KlaviyoQueryResult<KlaviyoCatalogItem> | undefined;
+            let klaviyoItemResults: GetCatalogItemResponseCollectionCompoundDocument | undefined;
             let succeeded = 0,
                 errored = 0,
                 totalItems = 0;
 
             do {
-                klaviyoItemResults = await this.klaviyoService.getKlaviyoPaginatedItems(klaviyoItemResults?.links.next);
+                klaviyoItemResults = await this.klaviyoService.getKlaviyoPaginatedItems(klaviyoItemResults?.links?.next);
 
                 const promiseResults = await Promise.allSettled(
                     klaviyoItemResults.data.flatMap((item) => this.generateDeleteItemRequest(item.id as string)),
@@ -178,15 +182,15 @@ export class ProductsSync {
                         logger.error('Error deleting products in klaviyo', rejected),
                     );
                 }
-            } while (klaviyoItemResults?.links.next);
+            } while (klaviyoItemResults?.links?.next);
             logger.info(
                 `Klaviyo products/variants deletion. Total products to be deleted ${totalItems}, successfully deleted: ${succeeded}, errored: ${errored}`,
             );
-            await this.lockService.releaseLock(this.lockKey);
+            this.lockService.releaseLock(this.lockKey);
         } catch (e: any) {
             if (e?.code !== ErrorCodes.LOCKED) {
                 logger.error('Error while deleting all products from Klaviyo', e);
-                await this.lockService.releaseLock(this.lockKey);
+                this.lockService.releaseLock(this.lockKey);
             } else {
                 logger.warn('Already locked');
             }
@@ -195,7 +199,11 @@ export class ProductsSync {
 
     private generateProductsJobRequestForKlaviyo = async (products: Product[]): Promise<KlaviyoEvent[]> => {
         const ctPublishedProducts = products.filter((p) => p.masterData.current);
-        const klaviyoItems = (await this.klaviyoService.getKlaviyoItemsByIds(ctPublishedProducts.map((p) => p.id))).map(
+        const klaviyoItems = (await this.klaviyoService.getKlaviyoItemsByIds(ctPublishedProducts.map((p) => {
+            const productSlug = p.masterData.current.slug;
+            const defaultProductSlug = getLocalizedStringAsText(productSlug);
+            return defaultProductSlug;
+        }))).map(
             (i) => i.id,
         );
         const productsForCreation = ctPublishedProducts.filter(
@@ -227,8 +235,10 @@ export class ProductsSync {
             .map((v) => v.sku || '')
             .filter((v) => v)
             .map((v) => `$custom:::$default:::${v}`);
+        const productSlug = product.masterData.current.slug;
+        const defaultProductSlug = getLocalizedStringAsText(productSlug);
         const klaviyoVariants = (
-            await this.klaviyoService.getKlaviyoItemVariantsByCtSkus(product.id, undefined, ['id'])
+            await this.klaviyoService.getKlaviyoItemVariantsByCtSkus(defaultProductSlug, undefined, ['id'])
         ).map((i) => i.id);
         const variantsForCreation = combinedVariants.filter(
             (v) => !klaviyoVariants.includes(`$custom:::$default:::${v.sku}`),
@@ -283,6 +293,6 @@ export class ProductsSync {
     }
 
     public async releaseLockExternally(): Promise<void> {
-        await this.lockService.releaseLock(this.lockKey);
+        this.lockService.releaseLock(this.lockKey);
     }
 }

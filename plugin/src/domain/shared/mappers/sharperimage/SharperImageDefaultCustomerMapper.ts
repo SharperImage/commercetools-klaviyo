@@ -1,3 +1,4 @@
+import { Profile } from '../../../../types/klaviyo-types';
 import { DefaultCustomerMapper } from '../DefaultCustomerMapper';
 import { SharperImageCustomerMapper } from './SharperImageCustomerMapper';
 import { Address } from '@commercetools/platform-sdk';

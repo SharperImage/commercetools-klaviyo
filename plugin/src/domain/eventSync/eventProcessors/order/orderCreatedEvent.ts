@@ -10,6 +10,8 @@ import {
 } from '@commercetools/platform-sdk';
 import config from 'config';
 import { PaginatedProductResults } from '../../../../infrastructure/driven/commercetools/DefaultCtProductService';
+import { EventRequest } from '../../../../types/klaviyo-types';
+import { KlaviyoEvent } from '../../../../types/klaviyo-plugin';
 
 export class OrderCreatedEvent extends AbstractEventProcessor {
     private readonly PROCESSOR_NAME = 'OrderCreated';
@@ -60,12 +62,12 @@ export class OrderCreatedEvent extends AbstractEventProcessor {
 
         const events: KlaviyoEvent[] = [{ body, type: 'event' }];
 
-        this.getProductOrderedEventsFromOrder(events, order);
+        this.getProductOrderedEventsFromOrder(events, order, orderProducts);
 
         return Promise.resolve(events);
     }
 
-    private getProductOrderedEventsFromOrder(events: KlaviyoEvent[], order: Order) {
+    private getProductOrderedEventsFromOrder(events: KlaviyoEvent[], order: Order, orderProducts: Product[]) {
         const eventTime: Date = new Date(order.createdAt);
         eventTime.setSeconds(eventTime.getSeconds() + 1);
         order?.lineItems?.forEach((lineItem) => {
@@ -73,6 +75,7 @@ export class OrderCreatedEvent extends AbstractEventProcessor {
                 body: this.context.orderMapper.mapOrderLineToProductOrderedEvent(
                     lineItem,
                     order,
+                    orderProducts,
                     eventTime.toISOString(),
                 ),
                 type: 'event',

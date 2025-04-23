@@ -12,6 +12,8 @@ import { CtOrderService } from '../../infrastructure/driven/commercetools/CtOrde
 import { getElapsedSeconds, startTime } from '../../utils/time-utils';
 import { CtProductService } from '../../infrastructure/driven/commercetools/CtProductService';
 import { PaginatedProductResults } from '../../infrastructure/driven/commercetools/DefaultCtProductService';
+import { EventRequest } from '../../types/klaviyo-types';
+import { delaySeconds } from '../../utils/delay-seconds';
 
 export class OrdersSync {
     lockKey = 'orderFullSync';
@@ -38,10 +40,31 @@ export class OrdersSync {
         await this.syncOrders(this.ctOrderService.getOrdersByStartId, ' by start id', [startId]);
     };
 
+    private getProductsForOrder = async (
+        ctProductsByOrder: Record<string, object[]>,
+        ctOrdersResult: PaginatedOrderResults | undefined,
+    ) => {
+        for (const order of (ctOrdersResult as PaginatedOrderResults).data) {
+            ctProductsByOrder[order.id] = [];
+            let ctProductsResult: PaginatedProductResults | undefined;
+            do {
+                try {
+                    ctProductsResult = await this.ctProductService.getProductsByIdRange(
+                        order.lineItems.map((item) => item.productId),
+                        ctProductsResult?.lastId,
+                    );
+                    ctProductsByOrder[order.id] = ctProductsByOrder[order.id].concat(ctProductsResult.data);
+                } catch (err) {
+                    logger.info(`Failed to get product details for order: ${order.id}`);
+                }
+            } while (ctProductsResult?.hasMore);
+        }
+    };
+
     private syncOrders = async (ordersMethod: any, importTypeText: string, args: unknown[]) => {
         try {
             //ensures that only one sync at the time is running
-            await this.lockService.acquireLock(this.lockKey);
+            this.lockService.acquireLock(this.lockKey);
 
             let ctOrdersResult: PaginatedOrderResults | undefined;
             let ctProductsByOrder: any = {};
@@ -54,23 +77,9 @@ export class OrdersSync {
             do {
                 ctOrdersResult = await ordersMethod(...args, ctOrdersResult?.lastId);
 
-                // Used to set Categories for Order properties in Klaviyo
+                // Used to set Products/Categories for Order properties in Klaviyo
                 ctProductsByOrder = {};
-                for (const order of (ctOrdersResult as PaginatedOrderResults).data) {
-                    ctProductsByOrder[order.id] = [];
-                    let ctProductsResult: PaginatedProductResults | undefined;
-                    do {
-                        try {
-                            ctProductsResult = await this.ctProductService.getProductsByIdRange(
-                                order.lineItems.map((item) => item.productId),
-                                ctProductsResult?.lastId,
-                            );
-                            ctProductsByOrder[order.id] = ctProductsByOrder[order.id].concat(ctProductsResult.data);
-                        } catch (err) {
-                            logger.info(`Failed to get product details for order: ${order.id}`);
-                        }
-                    } while (ctProductsResult?.hasMore);
-                }
+                await this.getProductsForOrder(ctProductsByOrder, ctOrdersResult);
 
                 const promiseResults = await Promise.allSettled(
                     (ctOrdersResult as PaginatedOrderResults).data.flatMap((order) =>
@@ -90,20 +99,21 @@ export class OrdersSync {
                 if (rejectedPromises.length) {
                     rejectedPromises.forEach((rejected) => logger.error('Error syncing event with klaviyo', rejected));
                 }
+                await delaySeconds(2);
             } while ((ctOrdersResult as PaginatedOrderResults).hasMore);
             logger.info(
                 `Historical orders import${importTypeText}. Total orders to be imported ${totalOrders}, total klaviyo events: ${totalKlaviyoEvents}, successfully imported: ${succeeded}, errored: ${errored}, elapsed time: ${getElapsedSeconds(
                     _startTime,
                 )} seconds`,
             );
-            await this.lockService.releaseLock(this.lockKey);
+            this.lockService.releaseLock(this.lockKey);
         } catch (e: any) {
             if (e?.code !== ErrorCodes.LOCKED) {
                 logger.error('Error while syncing historical orders${importTypeText}', e);
-                await this.lockService.releaseLock(this.lockKey);
-            } else {
-                logger.warn('Already locked');
+                this.lockService.releaseLock(this.lockKey);
+                return;
             }
+            logger.warn('Already locked');
         }
     };
 
@@ -112,14 +122,19 @@ export class OrdersSync {
 
         //Order placed event
         events.push(
-            this.orderMapper.mapCtOrderToKlaviyoEvent(order, orderProducts, config.get('order.metrics.placedOrder'), false),
+            this.orderMapper.mapCtOrderToKlaviyoEvent(
+                order,
+                orderProducts,
+                config.get('order.metrics.placedOrder'),
+                false,
+            ),
         );
 
         //Ordered product event
         const eventTime: Date = new Date(order.createdAt);
         order.lineItems.forEach((line) => {
             eventTime.setSeconds(eventTime.getSeconds() + 1);
-            events.push(this.orderMapper.mapOrderLineToProductOrderedEvent(line, order, eventTime.toISOString()));
+            events.push(this.orderMapper.mapOrderLineToProductOrderedEvent(line, order, orderProducts, eventTime.toISOString()));
         });
 
         //Order fulfilled event
@@ -158,6 +173,6 @@ export class OrdersSync {
     };
 
     public async releaseLockExternally(): Promise<void> {
-        await this.lockService.releaseLock(this.lockKey);
+        this.lockService.releaseLock(this.lockKey);
     }
 }

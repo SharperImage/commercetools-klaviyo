@@ -3,6 +3,7 @@ import { CurrencyService } from '../../services/CurrencyService';
 import { DefaultOrderMapper } from '../DefaultOrderMapper';
 import { SharperImageDefaultCustomerMapper } from './SharperImageDefaultCustomerMapper';
 import { getCustomerProfileFromOrderSharperImage } from '../../../../utils/sharperimage/get-customer-profile-from-order';
+import { EventRequest } from '../../../../types/klaviyo-types';
 
 export class SharperImageDefaultOrderMapper extends DefaultOrderMapper {
   private sharperImageCustomerMapper: SharperImageDefaultCustomerMapper;
@@ -61,8 +62,8 @@ export class SharperImageDefaultOrderMapper extends DefaultOrderMapper {
       };
     }
 
-    public mapOrderLineToProductOrderedEvent(lineItem: LineItem, order: Order, time?: string): EventRequest {
-      const baseData = super.mapOrderLineToProductOrderedEvent(lineItem, order, time);
+    public mapOrderLineToProductOrderedEvent(lineItem: LineItem, order: Order, orderProducts: Product[], time?: string): EventRequest {
+      const baseData = super.mapOrderLineToProductOrderedEvent(lineItem, order, orderProducts, time);
       const sharperImageProfileData = getCustomerProfileFromOrderSharperImage(order, this.sharperImageCustomerMapper, true);
 
       return {

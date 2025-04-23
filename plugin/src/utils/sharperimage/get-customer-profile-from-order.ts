@@ -1,6 +1,7 @@
 import { Order } from '@commercetools/platform-sdk';
 import { getCustomerProfileFromOrder } from '../get-customer-profile-from-order';
 import { SharperImageCustomerMapper } from '../../domain/shared/mappers/sharperimage/SharperImageCustomerMapper';
+import { KlaviyoEventProfile } from '../../types/klaviyo-types';
 
 export const getCustomerProfileFromOrderSharperImage = (
     order: Order,

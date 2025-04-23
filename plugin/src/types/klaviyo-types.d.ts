@@ -88,14 +88,7 @@ type EventType = {
 
 type KlaviyoEventProfile = {
     type: string;
-    attributes: {
-        email?: string;
-        id?: string;
-        first_name?: string;
-        last_name?: string;
-        phone_number?: string;
-        external_id?: string; // API
-        externalId?: string; // SDK
+    attributes: Profile & {
         [key: string]: unknown;
     };
     [key: string]: unknown;

@@ -14,8 +14,7 @@ export const getCustomerProfileFromOrderSharperImage = (
         type: 'profile',
         attributes: {
             ...baseProfile.attributes,
-            ...sharperImageProfileData,
-            phone_number: sharperImageProfileData?.phone_number ?? baseProfile.attributes.phone_number,
+            ...(sharperImageProfileData ?? {})
         },
     };
 };

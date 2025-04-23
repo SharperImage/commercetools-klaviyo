@@ -9,10 +9,13 @@ export class SharperImageDefaultCustomerMapper extends DefaultCustomerMapper imp
       return null;
     }
 
+    // phone format: +12345678901
+    const phone10Digit = (address.phone ?? '').replace(/[^0-9]+/gi, '').slice(-10).padStart(10, '0');
+
     return {
       firstName: address.firstName,
       lastName: address.lastName,
-      phoneNumber: address.phone,
+      phoneNumber: `+1${phone10Digit}`,
     };
   }
 }

@@ -10,9 +10,9 @@ export class SharperImageDefaultCustomerMapper extends DefaultCustomerMapper imp
     }
 
     return {
-      firstName: address.firstName,
-      lastName: address.lastName,
-      phoneNumber: address.phone,
+      first_name: address.firstName,
+      last_name: address.lastName,
+      phone_number: address.phone,
     };
   }
 }

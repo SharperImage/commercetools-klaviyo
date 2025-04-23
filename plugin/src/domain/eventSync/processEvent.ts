@@ -83,7 +83,7 @@ export const processEvent = async (
     logger.info('Processing commercetools message', ctMessage);
     const klaviyoRequestsPromises = await Promise.allSettled(
         eventProcessors
-            .map((eventProcessors) => eventProcessors.instance(ctMessage, context))
+            .map((eventProcessor) => eventProcessor.instance(ctMessage, context))
             .filter((eventProcessor) => eventProcessor.isEventValid())
             .map((eventProcessor) => eventProcessor.generateKlaviyoEvents()),
     );

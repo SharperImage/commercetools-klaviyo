@@ -8,18 +8,14 @@ export const getCustomerProfileFromOrderSharperImage = (
     customerMapper: SharperImageCustomerMapper,
     updateAdditionalProfileProperties = false,
 ): KlaviyoEventProfile => {
-    const initialProfile: KlaviyoEventProfile = {
-        type: 'profile',
-        attributes: {},
-    };
     const baseProfile = getCustomerProfileFromOrder(order, customerMapper, updateAdditionalProfileProperties);
     const sharperImageProfileData = customerMapper.mapCtAddressToCustomerContact(order.billingAddress);
     return {
-        ...initialProfile,
+        type: 'profile',
         attributes: {
             ...baseProfile.attributes,
             ...sharperImageProfileData,
-            phone_number: sharperImageProfileData?.phone_number ?? undefined,
+            phone_number: sharperImageProfileData?.phone_number ?? baseProfile.attributes.phone_number,
         },
     };
 };

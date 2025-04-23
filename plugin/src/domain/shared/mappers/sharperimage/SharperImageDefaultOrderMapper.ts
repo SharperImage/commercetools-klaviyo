@@ -32,8 +32,11 @@ export class SharperImageDefaultOrderMapper extends DefaultOrderMapper {
             profile: {
               data: {
                 ...baseData.data.attributes.profile.data,
-                ...sharperImageProfileData,
-              }
+                attributes: {
+                  ...baseData.data.attributes.profile.data.attributes,
+                  ...sharperImageProfileData.attributes,
+                },
+              },
             },
           },
         },
@@ -58,8 +61,11 @@ export class SharperImageDefaultOrderMapper extends DefaultOrderMapper {
             profile: {
               data: {
                 ...baseData.data.attributes.profile.data,
-                ...sharperImageProfileData,
-              }
+                attributes: {
+                  ...baseData.data.attributes.profile.data.attributes,
+                  ...sharperImageProfileData.attributes,
+                },
+              },
             },
           },
         },
@@ -79,8 +85,11 @@ export class SharperImageDefaultOrderMapper extends DefaultOrderMapper {
             profile: {
               data: {
                 ...baseData.data.attributes.profile.data,
-                ...sharperImageProfileData,
-              }
+                attributes: {
+                  ...baseData.data.attributes.profile.data.attributes,
+                  ...sharperImageProfileData.attributes,
+                },
+              },
             },
           },
         },
